@@ -1,12 +1,12 @@
 package com.ecom.ecom.services.jwt.auth;
 
 
-import com.ecom.ecom.dto.SignupRequest;
-import com.ecom.ecom.dto.UserDto;
 
 public interface AuthService {
 
-    UserDto createUser(SignupRequest signupRequest);
+    String login(String email, String password);
 
-    boolean hasUserWithEmail(String email);
+    String signUp(String name, String email, String password);
+
+    String verifyToken(String token);
 }

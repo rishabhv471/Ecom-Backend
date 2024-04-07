@@ -1,88 +1,71 @@
 package com.ecom.ecom.controller;
 
-import com.ecom.ecom.dto.AuthenticationRequest;
-import com.ecom.ecom.dto.SignupRequest;
-import com.ecom.ecom.dto.UserDto;
-import com.ecom.ecom.entity.User;
-import com.ecom.ecom.repository.UserRepository;
-import com.ecom.ecom.services.jwt.UserDetailsServiceImpl;
+
 import com.ecom.ecom.services.jwt.auth.AuthService;
-import com.ecom.ecom.utils.JwtUtil;
-import jakarta.servlet.http.HttpServletResponse;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.MalformedJwtException;
 import lombok.RequiredArgsConstructor;
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
-import java.util.Optional;
+import java.security.SignatureException;
 
 @RestController
+@RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
-    private static final String HEADER_STRING = "Authorization";
-    private static final String TOKEN_PREFIX = "Bearer ";
-
-    @Autowired
-    private final AuthenticationManager authenticationManager;
-    @Autowired
-    private final UserDetailsService userDetailsService;
-    @Autowired
-    private final JwtUtil jwtUtil;
-    @Autowired
-    private final UserRepository userRepository;
-
     private final AuthService authService;
 
-    @PostMapping("/authenticate")
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponseDto> login(@RequestBody AuthRequestDto authRequestDto) {
+        var jwtToken = authService.login(authRequestDto.email(), authRequestDto.password());
 
-    public void createAuthenticationToken(@RequestBody AuthenticationRequest authenticationRequest,
-                                          HttpServletResponse response) throws IOException, JSONException {
-        try{
-            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(authenticationRequest.getUsername(),
-                    authenticationRequest.getPassword()));
-        } catch (BadCredentialsException e){
-            throw new BadCredentialsException("Incorrect username or password");
+        var authResponseDto = new AuthResponseDto(jwtToken, AuthStatus.LOGIN_SUCCESS);
 
-        }
-
-        final UserDetails userDetails = userDetailsService.loadUserByUsername(authenticationRequest.getUsername());
-        Optional<User> optionalUser = userRepository.findFirstByEmail(userDetails.getUsername());
-        final String jwt = jwtUtil.generateToken(userDetails.getUsername());
-
-        if (optionalUser.isPresent()){
-            response.getWriter().write(new JSONObject()
-                    .put("userId", optionalUser.get().getId())
-                    .put("role",optionalUser.get().getRole())
-                    .toString()
-            );
-
-            response.addHeader(HEADER_STRING,TOKEN_PREFIX+jwt);
-        }
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(authResponseDto);
     }
 
     @PostMapping("/sign-up")
-    public ResponseEntity<?>signupUser(@RequestBody SignupRequest signupRequest){
+    public ResponseEntity<AuthResponseDto> signUp(@RequestBody AuthRequestDto authRequestDto) {
+        try {
+            var jwtToken = authService.signUp(authRequestDto.name(), authRequestDto.email(), authRequestDto.password());
 
-        if (authService.hasUserWithEmail(signupRequest.getEmail())){
-            return  new ResponseEntity<>("user already exists", HttpStatus.NOT_ACCEPTABLE);
+            var authResponseDto = new AuthResponseDto(jwtToken, AuthStatus.USER_CREATED_SUCCESSFULLY);
+
+            return ResponseEntity
+                    .status(HttpStatus.OK)
+                    .body(authResponseDto);
+        } catch (Exception e) {
+            var authResponseDto = new AuthResponseDto(null, AuthStatus.USER_NOT_CREATED);
+
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(authResponseDto);
         }
-
-        UserDto userDto = authService.createUser(signupRequest);
-        return new ResponseEntity<>(userDto,HttpStatus.OK);
-
     }
 
+    @PostMapping("/verify-token")
+    public ResponseEntity<String> verifyToken(@RequestBody String token) {
+        try {
+            var username = authService.verifyToken(token);
 
+            return ResponseEntity
+                    .status(HttpStatus.OK)
+                    .body(username);
+        } catch (MalformedJwtException e) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body("Token is malformed");
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body("JWT Exception occurred: " + e.getMessage());
+        }
+    }
 }
